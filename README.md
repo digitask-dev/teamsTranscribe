@@ -1,5 +1,7 @@
 ﻿# teamsTranscribe
 
+See also: [README.ja.md](README.ja.md) (Japanese).
+
 `teamsTranscribe` is a Python desktop utility that captures live speech from your microphone and/or system audio output and renders captions in a floating overlay window. It combines PyAudio for audio capture, faster-whisper for high-quality speech recognition, and a PyQt-based overlay so you can keep real-time subtitles on top of applications such as Microsoft Teams, Zoom, or browser-based calls.
 
 > **Proof of concept:** This project is an experimental prototype intended for evaluation and not yet production-hardened.
