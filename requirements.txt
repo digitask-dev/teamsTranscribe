@@ -1,0 +1,9 @@
+# Web dependencies (if needed)
+Flask==2.0.1
+requests==2.25.1
+numpy==1.21.0
+
+# Transcription dependencies
+pyaudio==0.2.11
+vosk==0.3.45
+PyQt5==5.15.10
