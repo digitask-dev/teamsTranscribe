@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import Optional
 
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal
-from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout, QPushButton
+from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout, QPushButton, QSizePolicy
 
 
 class OverlayWindow(QWidget):
     text_requested = pyqtSignal(str)
 
-    def __init__(self, width: int = 800, height: int = 50) -> None:
+    def __init__(self, width: int = 800, height: int = 90) -> None:
         super().__init__()
 
         self.setWindowTitle("Live Transcription")
@@ -26,6 +26,8 @@ class OverlayWindow(QWidget):
         self.label = QLabel(self)
         self.label.setStyleSheet("font-size: 20px; color: white;")
         self.label.setAlignment(Qt.AlignCenter)  # type: ignore
+        self.label.setWordWrap(True)
+        self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
         layout.addWidget(self.label, 1)
 
