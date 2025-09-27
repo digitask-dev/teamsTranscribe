@@ -12,11 +12,6 @@ from dotenv import load_dotenv
 from pathlib import Path
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
-dotenv_path = Path(__file__).resolve().parent.parent / ".env"
-print("Loading .env from:", dotenv_path)
-print("Exists?", dotenv_path.exists())
-print("Loaded?", load_dotenv(dotenv_path, override=True))
-print("DEBUG WHISPER_MODEL_PATH:", os.environ.get("WHISPER_MODEL_PATH"))
 
 SAMPLE_RATE = 16000
 CHUNK_SAMPLES = 4096
