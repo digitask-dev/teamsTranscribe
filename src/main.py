@@ -1,7 +1,7 @@
 import os
 import sys
 import threading
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any
 
 import numpy as np
 import pyaudio
@@ -16,8 +16,10 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 SAMPLE_RATE = 16000
 CHUNK_SAMPLES = 4096
 
-
+# Smaller window sizes update the overlay faster but reduce Whisper context.
 def _parse_float(value: Optional[str], default: float) -> float:
+    if value is None:
+        return default
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -25,11 +27,11 @@ def _parse_float(value: Optional[str], default: float) -> float:
 
 
 WINDOW_SECONDS = max(
-    _parse_float(os.environ.get("WHISPER_WINDOW_SECONDS"), 5.0),
-    1.0,
+    _parse_float(os.environ.get("WHISPER_WINDOW_SECONDS"), 1.5),
+    0.5,
 )
 OVERLAP_SECONDS = max(
-    _parse_float(os.environ.get("WHISPER_OVERLAP_SECONDS"), 1.0),
+    _parse_float(os.environ.get("WHISPER_OVERLAP_SECONDS"), 0.4),
     0.0,
 )
 
@@ -66,8 +68,8 @@ class OverlayWindow(QLabel):
         self.setStyleSheet(
             "font-size: 20px; color: white; background-color: rgba(0, 0, 0, 150);"
         )
-        self.setAlignment(Qt.AlignCenter)
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAlignment(Qt.AlignCenter)  # type: ignore
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)  # type: ignore
         self.resize(800, 200)
         self.show()
 
@@ -121,11 +123,11 @@ class StreamingTranscriber:
             self.buffer = np.zeros(0, dtype=np.float32)
 
 
-def find_loopback_devices(p: pyaudio.PyAudio) -> List[Tuple[int, dict]]:
-    devices: List[Tuple[int, dict]] = []
+def find_loopback_devices(p: pyaudio.PyAudio) -> List[Tuple[int, Any]]:
+    devices: List[Tuple[int, Any]] = []
     for idx in range(p.get_device_count()):
         dev_info = p.get_device_info_by_index(idx)
-        name = dev_info.get("name", "").lower()
+        name = str(dev_info.get("name", "")).lower()
         host_api_name = ""
         host_api_index = dev_info.get("hostApi")
         if host_api_index is not None:
@@ -141,7 +143,7 @@ def find_loopback_devices(p: pyaudio.PyAudio) -> List[Tuple[int, dict]]:
             or "vb-audio" in name
             or "virtual" in name
             or "cable" in name
-            or "wasapi" in host_api_name.lower()
+            or "wasapi" in str(host_api_name).lower()
         ):
             devices.append((idx, dev_info))
     return devices
