@@ -1,244 +1,330 @@
-import sys
 import os
-import json
+import sys
 import threading
-import pyaudio
-import numpy as np
-from vosk import Model, KaldiRecognizer
-from PyQt5.QtWidgets import QApplication, QLabel
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
-from dotenv import load_dotenv
-load_dotenv()
+from typing import List, Tuple, Optional
 
-# Path to the Vosk model directory (set MODEL_PATH environment variable or use default)
-MODEL_PATH = os.environ.get('MODEL_PATH', "./model/vosk-model-small-ja-0.22")
+import numpy as np
+import pyaudio
+from faster_whisper import WhisperModel
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QLabel
+from dotenv import load_dotenv
+from pathlib import Path
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
+dotenv_path = Path(__file__).resolve().parent.parent / ".env"
+print("Loading .env from:", dotenv_path)
+print("Exists?", dotenv_path.exists())
+print("Loaded?", load_dotenv(dotenv_path, override=True))
+print("DEBUG WHISPER_MODEL_PATH:", os.environ.get("WHISPER_MODEL_PATH"))
+
+SAMPLE_RATE = 16000
+CHUNK_SAMPLES = 4096
+
+
+def _parse_float(value: Optional[str], default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+WINDOW_SECONDS = max(
+    _parse_float(os.environ.get("WHISPER_WINDOW_SECONDS"), 5.0),
+    1.0,
+)
+OVERLAP_SECONDS = max(
+    _parse_float(os.environ.get("WHISPER_OVERLAP_SECONDS"), 1.0),
+    0.0,
+)
+
+WHISPER_MODEL_PATH = os.environ.get("WHISPER_MODEL_PATH", "base")
+WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
+WHISPER_BEAM_SIZE = int(os.environ.get("WHISPER_BEAM_SIZE", "1"))
+
+language_override = os.environ.get("WHISPER_LANGUAGE", "auto")
+WHISPER_LANGUAGE = None if language_override.lower() == "auto" else language_override
+
+_WHISPER_MODEL: Optional[WhisperModel] = None
+
+
+def get_whisper_model() -> WhisperModel:
+    global _WHISPER_MODEL
+    if _WHISPER_MODEL is None:
+        print(
+            f"Loading faster-whisper model '{WHISPER_MODEL_PATH}' "
+            f"(compute_type={WHISPER_COMPUTE_TYPE})"
+        )
+        _WHISPER_MODEL = WhisperModel(
+            WHISPER_MODEL_PATH,
+            device="auto",
+            compute_type=WHISPER_COMPUTE_TYPE,
+        )
+    return _WHISPER_MODEL
+
 
 class OverlayWindow(QLabel):
     def __init__(self):
         super().__init__()
 
-        # Setup the overlay window
         self.setWindowTitle("Live Transcription")
-        self.setStyleSheet("font-size: 20px; color: white; background-color: rgba(0, 0, 0, 150);")
+        self.setStyleSheet(
+            "font-size: 20px; color: white; background-color: rgba(0, 0, 0, 150);"
+        )
         self.setAlignment(Qt.AlignCenter)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.resize(800, 200)
         self.show()
 
-    def update_text(self, text):
-        if text.strip():  # Only update if text is not empty
+    def update_text(self, text: str) -> None:
+        if text.strip():
             self.setText(text)
 
 
-def transcribe_audio(overlay, use_system_audio=False):
-    # Load the Vosk model
-    if not os.path.exists(MODEL_PATH):
-        print(f"Model path '{MODEL_PATH}' does not exist!")
-        sys.exit(1)
+class StreamingTranscriber:
+    def __init__(self, overlay: OverlayWindow, model: WhisperModel) -> None:
+        self.overlay = overlay
+        self.model = model
+        self.window_size = int(SAMPLE_RATE * WINDOW_SECONDS)
+        self.overlap_size = int(SAMPLE_RATE * OVERLAP_SECONDS)
+        self.buffer = np.zeros(0, dtype=np.float32)
+        self.last_text = ""
 
-    model = Model(MODEL_PATH)
-    recognizer = KaldiRecognizer(model, 16000)
+    def submit(self, chunk: bytes) -> None:
+        if not chunk:
+            return
 
-    # Setup PyAudio
-    p = pyaudio.PyAudio()
-    
-    if use_system_audio:
-        # Try to find a WASAPI loopback device for system audio capture
-        wasapi_devices = []
-        for i in range(p.get_device_count()):
-            dev_info = p.get_device_info_by_index(i)
-            if "WASAPI" in dev_info.get('hostApi', 0) and "loopback" in dev_info.get('name', '').lower():
-                wasapi_devices.append((i, dev_info))
-        
-        if wasapi_devices:
-            device_index = wasapi_devices[0][0]
-            print(f"Using system audio device: {wasapi_devices[0][1]['name']}")
-            stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, 
-                          input=True, frames_per_buffer=8000,
-                          input_device_index=device_index)
+        samples = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
+        if not samples.size:
+            return
+
+        self.buffer = np.concatenate((self.buffer, samples))
+        if self.buffer.size < self.window_size:
+            return
+
+        audio = self.buffer.copy()
+        try:
+            segments, _ = self.model.transcribe(
+                audio,
+                beam_size=WHISPER_BEAM_SIZE,
+                temperature=0.0,
+                vad_filter=True,
+                language=WHISPER_LANGUAGE,
+            )
+            text = "".join(segment.text for segment in segments).strip()
+        except Exception as exc:
+            print(f"Transcription error: {exc}")
+            text = ""
+
+        if text and text != self.last_text:
+            self.overlay.update_text(text)
+            self.last_text = text
+
+        if self.overlap_size and self.overlap_size < self.buffer.size:
+            self.buffer = self.buffer[-self.overlap_size :]
         else:
-            print("No WASAPI loopback device found. Falling back to microphone.")
-            stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, 
-                          input=True, frames_per_buffer=8000)
-    else:
-        # Use regular microphone input
-        stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, 
-                      input=True, frames_per_buffer=8000)
+            self.buffer = np.zeros(0, dtype=np.float32)
 
-    print("Listening for speech...")
+
+def find_loopback_devices(p: pyaudio.PyAudio) -> List[Tuple[int, dict]]:
+    devices: List[Tuple[int, dict]] = []
+    for idx in range(p.get_device_count()):
+        dev_info = p.get_device_info_by_index(idx)
+        name = dev_info.get("name", "").lower()
+        host_api_name = ""
+        host_api_index = dev_info.get("hostApi")
+        if host_api_index is not None:
+            try:
+                host_api_name = p.get_host_api_info_by_index(int(host_api_index)).get(
+                    "name", ""
+                )
+            except Exception:
+                host_api_name = ""
+
+        if (
+            "loopback" in name
+            or "vb-audio" in name
+            or "virtual" in name
+            or "cable" in name
+            or "wasapi" in host_api_name.lower()
+        ):
+            devices.append((idx, dev_info))
+    return devices
+
+
+def open_input_stream(p: pyaudio.PyAudio, device_index: Optional[int] = None):
+    return p.open(
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=SAMPLE_RATE,
+        input=True,
+        frames_per_buffer=CHUNK_SAMPLES,
+        input_device_index=device_index,
+    )
+
+
+def transcribe_audio(overlay: OverlayWindow, use_system_audio: bool = False) -> None:
+    model = get_whisper_model()
+    transcriber = StreamingTranscriber(overlay, model)
+
+    p = pyaudio.PyAudio()
+    stream = None
 
     try:
-        while True:
-            # Read data from the audio source
-            data = stream.read(8000, exception_on_overflow=False)
-            
-            if recognizer.AcceptWaveform(data):
-                result = recognizer.Result()  # Get the transcription result
-                transcription = json.loads(result).get("text", "")
-                overlay.update_text(transcription)
+        if use_system_audio:
+            loopback_devices = find_loopback_devices(p)
+            if loopback_devices:
+                device_index = loopback_devices[0][0]
+                print(f"Using system audio device: {loopback_devices[0][1]['name']}")
+                stream = open_input_stream(p, device_index=device_index)
             else:
-                # Display interim results
-                partial = recognizer.PartialResult()
-                partial_text = json.loads(partial).get("partial", "")
-                overlay.update_text(partial_text)
+                print("No loopback device found. Falling back to microphone.")
+
+        if stream is None:
+            stream = open_input_stream(p)
+
+        print("Listening for speech...")
+        while True:
+            data = stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
+            transcriber.submit(data)
     except KeyboardInterrupt:
         print("Stopping transcription...")
     finally:
-        stream.stop_stream()
-        stream.close()
+        if stream is not None:
+            stream.stop_stream()
+            stream.close()
         p.terminate()
 
 
-def transcribe_both_audio(overlay):
-    # Load the Vosk model
-    if not os.path.exists(MODEL_PATH):
-        print(f"Model path '{MODEL_PATH}' does not exist!")
-        sys.exit(1)
+def transcribe_both_audio(overlay: OverlayWindow) -> None:
+    model = get_whisper_model()
+    transcriber = StreamingTranscriber(overlay, model)
 
-    model = Model(MODEL_PATH)
-    recognizer = KaldiRecognizer(model, 16000)
-
-    # Setup PyAudio for both microphone and system audio
     p = pyaudio.PyAudio()
-    
-    # Find microphone device
-    mic_stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, 
-                      input=True, frames_per_buffer=8000)
-    
-    # Find system audio device (VB-CABLE or other loopback)
+    mic_stream = None
     system_stream = None
-    loopback_devices = []
-    for i in range(p.get_device_count()):
-        dev_info = p.get_device_info_by_index(i)
-        dev_name = dev_info.get('name', '').lower()
-        # Check for various loopback device patterns
-        if ('loopback' in dev_name or 
-            'cable' in dev_name or 
-            'vb-audio' in dev_name or
-            'virtual' in dev_name):
-            loopback_devices.append((i, dev_info))
-    
-    if loopback_devices:
-        device_index = loopback_devices[0][0]
-        print(f"Using system audio device: {loopback_devices[0][1]['name']}")
-        system_stream = p.open(format=pyaudio.paInt16, channels=1, rate=16000, 
-                             input=True, frames_per_buffer=8000,
-                             input_device_index=device_index)
-    else:
-        print("No loopback device found. Using microphone only.")
-
-    print("Listening for speech from both microphone and system audio...")
-    print("Debug: Speaking into microphone should show transcription in overlay window")
 
     try:
+        mic_stream = open_input_stream(p)
+
+        loopback_devices = find_loopback_devices(p)
+        if loopback_devices:
+            device_index = loopback_devices[0][0]
+            print(f"Using system audio device: {loopback_devices[0][1]['name']}")
+            system_stream = open_input_stream(p, device_index=device_index)
+        else:
+            print("No loopback device found. Using microphone only.")
+
+        print("Listening for speech from both microphone and system audio...")
+
         while True:
-            # Read from microphone
-            mic_data = mic_stream.read(8000, exception_on_overflow=False)
-            
-            # Read from system audio if available
-            system_data = mic_data  # Default to mic data if no system audio
+            mic_data = mic_stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
+
             if system_stream:
                 try:
-                    system_data = system_stream.read(8000, exception_on_overflow=False)
-                except:
+                    system_data = system_stream.read(CHUNK_SAMPLES, exception_on_overflow=False)
+                except IOError:
                     system_data = mic_data
-            
-            # Mix the audio streams
-            mixed_data = mix_audio(mic_data, system_data)
-            
-            # Debug: Check if we're getting audio data
-            audio_level = np.frombuffer(mixed_data, dtype=np.int16).std()
-            if audio_level > 100:  # If audio level is above threshold
-                print(f"Audio detected (level: {audio_level:.0f})")
-            
-            if recognizer.AcceptWaveform(mixed_data):
-                result = recognizer.Result()  # Get the transcription result
-                transcription = json.loads(result).get("text", "")
-                print(f"Full result JSON: {result}")
-                print(f"Full transcription: '{transcription}'")
-                if transcription.strip():
-                    overlay.update_text(transcription)
             else:
-                # Display interim results
-                partial = recognizer.PartialResult()
-                partial_result = json.loads(partial)
-                partial_text = partial_result.get("partial", "")
-                print(f"Partial result JSON: {partial}")
-                print(f"Partial: '{partial_text}'")
-                if partial_text.strip():
-                    overlay.update_text(partial_text)
+                system_data = mic_data
+
+            mixed_data = mix_audio(mic_data, system_data)
+            transcriber.submit(mixed_data)
     except KeyboardInterrupt:
         print("Stopping transcription...")
     finally:
-        mic_stream.stop_stream()
-        mic_stream.close()
-        if system_stream:
+        if mic_stream is not None:
+            mic_stream.stop_stream()
+            mic_stream.close()
+        if system_stream is not None:
             system_stream.stop_stream()
             system_stream.close()
         p.terminate()
 
 
-def mix_audio(data1, data2):
-    """Mix two audio streams by averaging the samples"""
-    
-    # Convert bytes to numpy arrays
+def mix_audio(data1: bytes, data2: bytes) -> bytes:
     arr1 = np.frombuffer(data1, dtype=np.int16)
     arr2 = np.frombuffer(data2, dtype=np.int16)
-    
-    # Ensure arrays are the same length
+
     min_len = min(len(arr1), len(arr2))
+    if min_len == 0:
+        return data1 if len(arr1) >= len(arr2) else data2
+
     arr1 = arr1[:min_len]
     arr2 = arr2[:min_len]
-    
-    # Mix by averaging
+
     mixed = ((arr1.astype(np.int32) + arr2.astype(np.int32)) / 2).astype(np.int16)
-    
     return mixed.tobytes()
 
 
-def list_audio_devices():
-    """List all available audio devices for debugging"""
+def list_audio_devices() -> None:
     p = pyaudio.PyAudio()
     print("\nAvailable audio devices:")
     print("-" * 50)
     for i in range(p.get_device_count()):
         dev_info = p.get_device_info_by_index(i)
+        host_api_name = ""
+        host_api_index = dev_info.get("hostApi")
+        if host_api_index is not None:
+            try:
+                host_api_name = p.get_host_api_info_by_index(int(host_api_index)).get(
+                    "name", ""
+                )
+            except Exception:
+                host_api_name = str(host_api_index)
         print(f"Device {i}: {dev_info['name']}")
-        print(f"  Host API: {dev_info['hostApi']}")
+        print(f"  Host API: {host_api_name}")
         print(f"  Max Input Channels: {dev_info['maxInputChannels']}")
         print(f"  Max Output Channels: {dev_info['maxOutputChannels']}")
         print()
     p.terminate()
 
-# Uncomment the line below to debug audio devices
+
 # list_audio_devices()
 
-def main():
+
+def main() -> None:
     import argparse
-    parser = argparse.ArgumentParser(description='Live audio transcription')
-    parser.add_argument('--mic-only', action='store_true', 
-                       help='Capture microphone audio only')
-    parser.add_argument('--system-only', action='store_true', 
-                       help='Capture system audio output only')
+
+    parser = argparse.ArgumentParser(description="Live audio transcription")
+    parser.add_argument(
+        "--mic-only",
+        action="store_true",
+        help="Capture microphone audio only",
+    )
+    parser.add_argument(
+        "--system-only",
+        action="store_true",
+        help="Capture system audio output only",
+    )
     args = parser.parse_args()
-    
-    # Set up the PyQt application
+
     app = QApplication(sys.argv)
     overlay = OverlayWindow()
 
-    # Start the transcription process in a separate thread
     if args.mic_only:
-        thread = threading.Thread(target=transcribe_audio, args=(overlay, False), daemon=True)
+        thread = threading.Thread(
+            target=transcribe_audio,
+            args=(overlay, False),
+            daemon=True,
+        )
     elif args.system_only:
-        thread = threading.Thread(target=transcribe_audio, args=(overlay, True), daemon=True)
+        thread = threading.Thread(
+            target=transcribe_audio,
+            args=(overlay, True),
+            daemon=True,
+        )
     else:
-        # Default: mixed audio from both sources
-        thread = threading.Thread(target=transcribe_both_audio, args=(overlay,), daemon=True)
-    
+        thread = threading.Thread(
+            target=transcribe_both_audio,
+            args=(overlay,),
+            daemon=True,
+        )
+
     thread.start()
 
     sys.exit(app.exec_())
+
 
 if __name__ == "__main__":
     main()
