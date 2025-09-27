@@ -7,9 +7,11 @@ from vosk import Model, KaldiRecognizer
 from PyQt5.QtWidgets import QApplication, QLabel
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
+from dotenv import load_dotenv
+load_dotenv()
 
-# Path to the Vosk model directory (download and specify the correct path)
-MODEL_PATH = "./model/vosk-model-small-ja-0.22"  # Update this with the path to your Vosk model
+# Path to the Vosk model directory (set MODEL_PATH environment variable or use default)
+MODEL_PATH = os.environ.get('MODEL_PATH', "./model/vosk-model-small-ja-0.22")
 
 class OverlayWindow(QLabel):
     def __init__(self):

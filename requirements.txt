@@ -7,3 +7,6 @@ numpy==1.21.0
 pyaudio==0.2.11
 vosk==0.3.45
 PyQt5==5.15.10
+
+# Environment management
+python-dotenv==1.0.1
