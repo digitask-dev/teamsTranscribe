@@ -6,8 +6,8 @@ from typing import List, Tuple, Optional, Any
 import numpy as np
 import pyaudio
 from faster_whisper import WhisperModel
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QLabel
+from PyQt5.QtCore import Qt, QPoint
+from PyQt5.QtWidgets import QApplication, QLabel, QWidget, QHBoxLayout, QPushButton
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -60,22 +60,62 @@ def get_whisper_model() -> WhisperModel:
     return _WHISPER_MODEL
 
 
-class OverlayWindow(QLabel):
-    def __init__(self):
+class OverlayWindow(QWidget):
+    def __init__(self) -> None:
         super().__init__()
 
         self.setWindowTitle("Live Transcription")
-        self.setStyleSheet(
-            "font-size: 20px; color: white; background-color: rgba(0, 0, 0, 150);"
-        )
-        self.setAlignment(Qt.AlignCenter)  # type: ignore
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)  # type: ignore
-        self.resize(800, 200)
+        self.setFixedSize(800, 50)
+        self.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 150); border-radius: 6px;"
+        )
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(16, 8, 12, 8)
+        layout.setSpacing(8)
+
+        self.label = QLabel(self)
+        self.label.setStyleSheet("font-size: 20px; color: white;")
+        self.label.setAlignment(Qt.AlignCenter)  # type: ignore
+
+        layout.addWidget(self.label, 1)
+
+        self.close_button = QPushButton("X", self)
+        self.close_button.setFixedSize(24, 24)
+        self.close_button.setStyleSheet(
+            "color: white; background-color: rgba(255, 255, 255, 60);"
+            "border: none; font-size: 14px;"
+        )
+        self.close_button.setCursor(Qt.PointingHandCursor)  # type: ignore
+        self.close_button.clicked.connect(self.close)  # type: ignore
+
+        layout.addWidget(self.close_button)
+
+        self._drag_pos: Optional[QPoint] = None
         self.show()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPos() - self._drag_pos)
+            event.accept()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = None
+            event.accept()
+        super().mouseReleaseEvent(event)
 
     def update_text(self, text: str) -> None:
         if text.strip():
-            self.setText(text)
+            self.label.setText(text)
 
 
 class StreamingTranscriber:
