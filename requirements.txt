@@ -1,9 +1,8 @@
-﻿# Core runtime dependencies
+# Core runtime dependencies
 numpy==1.21.0
 pyaudio==0.2.11
 PyQt5==5.15.10
 faster-whisper>=1.0,<1.1
-python-dotenv==1.0.1
 
 # Optional extras (install manually if you need them)
 # onnxruntime

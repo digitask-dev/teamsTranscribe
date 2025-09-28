@@ -1,10 +1,8 @@
 import argparse
 import sys
 import threading
-from pathlib import Path
 
 from PyQt5.QtWidgets import QApplication
-from dotenv import load_dotenv
 
 from audio_capture import list_audio_devices
 from config import (
@@ -157,7 +155,6 @@ def start_transcription_thread(
 
 
 def main() -> None:
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
     args = parse_args()
 
     if args.command == "config":
