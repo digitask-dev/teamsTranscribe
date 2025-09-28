@@ -22,6 +22,7 @@ class OverlayWindow(QWidget):
         self.setWindowTitle("Live Transcription")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)  # type: ignore
         self.setFixedSize(width, height)
+        self.setCursor(Qt.CursorShape.SizeAllCursor)
         self.setStyleSheet(
             "background-color: rgba(0, 0, 0, 150); border-radius: 6px;"
         )
@@ -35,6 +36,7 @@ class OverlayWindow(QWidget):
         header_layout.setSpacing(8)
 
         self.label = QLabel(self)
+        self.label.setCursor(Qt.CursorShape.SizeAllCursor)
         self.label.setStyleSheet("font-size: 20px; color: white;")
         self.label.setAlignment(Qt.AlignCenter)  # type: ignore
         self.label.setWordWrap(True)
@@ -67,9 +69,10 @@ class OverlayWindow(QWidget):
         layout.addLayout(header_layout)
 
         self.info_label = QLabel(self)
+        self.info_label.setCursor(Qt.CursorShape.SizeAllCursor)
         self.info_label.setStyleSheet(
             "font-size: 12px; color: rgba(255, 255, 255, 0.75);"
-            "background-color: rgba(31, 31, 30, 1); padding: 4px 8px; border-radius: 4px;"
+            "background-color: rgba(160, 160, 160, 0.35); padding: 4px 8px; border-radius: 4px;"
         )
         self.info_label.setAlignment(Qt.AlignCenter)  # type: ignore
         self.info_label.setWordWrap(True)
@@ -121,6 +124,7 @@ class OverlayWindow(QWidget):
             self._drag_pos = None
             event.accept()
         super().mouseReleaseEvent(event)
+
 
 
 
