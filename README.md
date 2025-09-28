@@ -1,4 +1,4 @@
-﻿# teamsTranscribe
+# teamsTranscribe
 
 See also: [README.ja.md](README.ja.md) (Japanese).
 
@@ -9,7 +9,7 @@ See also: [README.ja.md](README.ja.md) (Japanese).
 ## Features
 - Real-time transcription with low-latency streaming chunks
 - Capture sources: microphone only, system loopback only, or a mix of both
-- Movable, always-on-top overlay window for live captions
+- Movable, always-on-top overlay window with a toggleable status panel for live captions and session details
 - Automatic language detection with optional overrides via the config file or environment variables
 - Simple CLI flags to list available devices and choose the capture mode
 
@@ -59,6 +59,21 @@ See also: [README.ja.md](README.ja.md) (Japanese).
 
 The legacy `.env` file is still loaded automatically, so existing overrides continue to work.
 
+## Managing Configuration from the CLI
+Use the `config` subcommand to inspect or update settings without editing JSON manually:
+
+```powershell
+python -m src.main config --list
+python -m src.main config --set whisper_model_path=medium --set whisper_language=en
+```
+
+Key names are case-insensitive and accept either `WHISPER_MODEL_PATH` or `whisper_model_path`. Provide `--config-path` to point at a different JSON file for both the `config` command and the main run mode:
+
+```powershell
+python -m src.main config --config-path C:\path\to\custom.json --list
+python -m src.main --config-path C:\path\to\custom.json
+```
+
 ## Running the App
 - List available audio devices before launching, so you know which inputs are exposed:
   ```powershell
@@ -78,7 +93,7 @@ The legacy `.env` file is still loaded automatically, so existing overrides cont
   python -m src.main --system-only
   ```
 
-While running, the overlay window stays on top of other apps. Drag it to reposition, and click the `X` button to close. The terminal logs will show which devices were selected and whether voice activity detection had to fall back due to missing optional dependencies (e.g., `onnxruntime`).
+While running, the overlay window stays on top of other apps. Drag it to reposition, use the toggle arrow to reveal per-session status (model, language, compute type), and click the `X` button to close. The terminal logs will show which devices were selected and whether voice activity detection had to fall back due to missing optional dependencies (e.g., `onnxruntime`).
 
 ## Building / Installing on Your PC
 - Editable install in the active environment (handy for local development):
@@ -99,4 +114,7 @@ While running, the overlay window stays on top of other apps. Drag it to reposit
 
 ## License
 This project is distributed under the GNU Affero General Public License v3.0 (AGPL-3.0), allowing free use, modification, and redistribution provided that network-accessible deployments also share their source under the same terms.
+
+
+
 
