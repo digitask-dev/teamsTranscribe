@@ -110,6 +110,58 @@ def _coerce_to_str(value: Any, default: str) -> str:
     return str(value)
 
 
+
+def normalize_config_key(key: str) -> str | None:
+    if not isinstance(key, str):
+        return None
+    normalized = key.strip().lower()
+    if not normalized:
+        return None
+    return _CONFIG_KEYS_LOOKUP.get(normalized)
+
+
+def load_config_dict(config_path: Optional[Union[str, Path]] = None) -> dict[str, Any]:
+    path = _resolve_config_path(config_path)
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, Mapping):
+        return {}
+    return dict(data)
+
+
+def update_config_file(
+    updates: Mapping[str, Any],
+    *,
+    config_path: Optional[Union[str, Path]] = None,
+) -> dict[str, Any]:
+    if not updates:
+        return load_config_dict(config_path)
+
+    normalized_updates: dict[str, Any] = {}
+    for key, value in updates.items():
+        canonical = normalize_config_key(key)
+        if canonical is None:
+            raise KeyError(f"Unknown config key: {key}")
+        normalized_updates[canonical] = value
+
+    current = load_config_dict(config_path)
+    result = dict(current)
+    for canonical, value in normalized_updates.items():
+        result[canonical.lower()] = value
+
+    path = _resolve_config_path(config_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(result, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    return result
+
+
 def load_settings(
     env: Optional[Mapping[str, Any]] = None,
     *,
@@ -143,3 +195,6 @@ def load_settings(
         whisper_beam_size=beam_size,
         whisper_language=language,
     )
+
+
+CONFIG_KEYS = frozenset(_CONFIG_KEYS)
