@@ -169,6 +169,7 @@ def main() -> None:
 
     app = QApplication(sys.argv)
     overlay = OverlayWindow()
+    overlay.set_status_info(settings.whisper_model_path, settings.whisper_language, settings.whisper_compute_type)
 
     start_transcription_thread(
         overlay=overlay,
