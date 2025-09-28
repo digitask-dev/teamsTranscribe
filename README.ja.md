@@ -10,7 +10,7 @@
 - 低遅延ストリーミングによるリアルタイム文字起こし
 - マイクのみ・システム音声のみ・両方のミックスを選択可能
 - ドラッグで移動できる常時最前面オーバーレイウィンドウ
-- 環境変数による自動言語検出やパラメータ調整
+- 設定ファイルまたは環境変数で上書きできる自動言語検出
 - コマンドライン引数でキャプチャモードやデバイス一覧を制御
 
 ## 前提条件
@@ -38,20 +38,25 @@
    pip install -r requirements.txt
    `
    - GPU で高速化したい場合は、faster-whisper の公式手順に従って CUDA 対応ホイールを導入してください。
-4. `.env` を配置し、必要に応じて値を調整:
-   `	ext
-   WHISPER_MODEL_PATH=base
-   WHISPER_COMPUTE_TYPE=int8
-   WHISPER_LANGUAGE=auto
-   WHISPER_WINDOW_SECONDS=5
-   WHISPER_OVERLAP_SECONDS=1
-   WHISPER_BEAM_SIZE=1
-   `
-   - `WHISPER_MODEL_PATH`: 利用する faster-whisper モデル名またはローカルパス（例: `base`, `medium`, `large-v3`）
-   - `WHISPER_COMPUTE_TYPE`: CPU/GPU に合わせた計算精度（`int8`, `float16` など）
-   - `WHISPER_LANGUAGE`: `auto` で自動検出、固定する場合は言語コード（例: `ja`, `en`）
-   - `WHISPER_WINDOW_SECONDS` / `WHISPER_OVERLAP_SECONDS`: ストリーミング窓と重なりの秒数
-   - `WHISPER_BEAM_SIZE`: ビーム幅。値を大きくすると精度は上がりますが速度は低下します。
+4. `config/settings.json` の設定ファイルを開き、必要に応じて値を変更してください:
+   ```json
+   {
+     "whisper_model_path": "base",
+     "whisper_compute_type": "int8",
+     "whisper_language": "auto",
+     "whisper_window_seconds": 5,
+     "whisper_overlap_seconds": 1,
+     "whisper_beam_size": 1
+   }
+   ```
+   - `whisper_model_path`: 利用する faster-whisper モデル名またはローカルパス（例: `base`, `medium`, `large-v3`）
+   - `whisper_compute_type`: CPU/GPU に合わせた計算精度（`int8`, `float16` など）
+   - `whisper_language`: `auto` で自動検出、固定する場合は言語コード（例: `ja`, `en`）
+   - `whisper_window_seconds` / `whisper_overlap_seconds`: ストリーミング窓と重なりの秒数
+   - `whisper_beam_size`: ビーム幅。値を大きくすると精度は上がりますが速度は低下します。
+   - 大文字表記の環境変数（例: `WHISPER_MODEL_PATH`）を設定すると、このファイルより優先されます。
+   - 複数のプロファイルを切り替える場合は、環境変数 `TEAMS_TRANSCRIBE_CONFIG` で別の設定ファイルを指定できます。
+既存の `.env` も自動で読み込まれるため、従来の上書き方法もそのまま使えます。
 
 ## 実行方法
 - 起動前に利用可能な音声デバイスを確認:

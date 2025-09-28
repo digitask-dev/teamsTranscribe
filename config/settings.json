@@ -1,0 +1,8 @@
+{
+  "whisper_model_path": "base",
+  "whisper_compute_type": "int8",
+  "whisper_language": "auto",
+  "whisper_window_seconds": 5,
+  "whisper_overlap_seconds": 1,
+  "whisper_beam_size": 1
+}

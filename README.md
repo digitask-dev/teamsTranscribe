@@ -10,7 +10,7 @@ See also: [README.ja.md](README.ja.md) (Japanese).
 - Real-time transcription with low-latency streaming chunks
 - Capture sources: microphone only, system loopback only, or a mix of both
 - Movable, always-on-top overlay window for live captions
-- Automatic language detection with optional overrides via environment variables
+- Automatic language detection with optional overrides via the config file or environment variables
 - Simple CLI flags to list available devices and choose the capture mode
 
 ## Prerequisites
@@ -38,20 +38,26 @@ See also: [README.ja.md](README.ja.md) (Japanese).
    pip install -r requirements.txt
    ```
    - For GPU acceleration, install a CUDA-enabled wheel by following the official faster-whisper instructions.
-4. Configure environment variables. Copy `.env` if it is not already present and adjust as needed:
-   ```text
-   WHISPER_MODEL_PATH=base
-   WHISPER_COMPUTE_TYPE=int8
-   WHISPER_LANGUAGE=auto
-   WHISPER_WINDOW_SECONDS=5
-   WHISPER_OVERLAP_SECONDS=1
-   WHISPER_BEAM_SIZE=1
+4. Review the configuration file at `config/settings.json` and adjust the defaults before launching:
+   ```json
+   {
+     "whisper_model_path": "base",
+     "whisper_compute_type": "int8",
+     "whisper_language": "auto",
+     "whisper_window_seconds": 5,
+     "whisper_overlap_seconds": 1,
+     "whisper_beam_size": 1
+   }
    ```
-   - `WHISPER_MODEL_PATH`: faster-whisper model name or local path (e.g., `base`, `medium`, `large-v3`).
-   - `WHISPER_COMPUTE_TYPE`: `int8`, `float16`, etc., depending on CPU/GPU support.
-   - `WHISPER_LANGUAGE`: `auto` for automatic detection or a language code (e.g., `en`, `ja`).
-   - `WHISPER_WINDOW_SECONDS` / `WHISPER_OVERLAP_SECONDS`: control streaming window size and overlap for smoother captions.
-   - `WHISPER_BEAM_SIZE`: larger values improve accuracy at the cost of speed.
+   - `whisper_model_path`: faster-whisper model name or local path (e.g., `base`, `medium`, `large-v3`).
+   - `whisper_compute_type`: `int8`, `float16`, etc., depending on CPU/GPU support.
+   - `whisper_language`: `auto` for automatic detection or a language code (e.g., `en`, `ja`).
+   - `whisper_window_seconds` / `whisper_overlap_seconds`: control streaming window size and overlap for smoother captions.
+   - `whisper_beam_size`: larger values improve accuracy at the cost of speed.
+   - Environment variables with the uppercase names (e.g., `WHISPER_MODEL_PATH`) still override the config when set.
+   - Set the TEAMS_TRANSCRIBE_CONFIG environment variable to point to an alternate config file if you maintain multiple profiles.
+
+The legacy `.env` file is still loaded automatically, so existing overrides continue to work.
 
 ## Running the App
 - List available audio devices before launching, so you know which inputs are exposed:
@@ -93,5 +99,4 @@ While running, the overlay window stays on top of other apps. Drag it to reposit
 
 ## License
 This project is distributed under the GNU Affero General Public License v3.0 (AGPL-3.0), allowing free use, modification, and redistribution provided that network-accessible deployments also share their source under the same terms.
-
 
